@@ -39,18 +39,13 @@
 
       <form id="ap-form" class="space-y-6">
         <div>
-          <label for="company-name" class="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
+          <label for="company-name" class="block text-sm font-medium text-gray-700 mb-1">Vendor Name</label>
           <input type="text" id="company-name" name="companyName" required
                  class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out">
         </div>
         <div>
           <label for="invoice-id" class="block text-sm font-medium text-gray-700 mb-1">Invoice ID</label>
           <input type="text" id="invoice-id" name="invoiceId" required
-                 class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out">
-        </div>
-        <div>
-          <label for="po-number" class="block text-sm font-medium text-gray-700 mb-1">PO Number</label>
-          <input type="text" id="po-number" name="poNumber" required
                  class="mt-1 block w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 transition duration-150 ease-in-out">
         </div>
 
@@ -64,18 +59,20 @@
         </div>
       </form>
 
-      <h2 class="text-2xl font-semibold text-gray-800 mt-10 mb-4">Submitted Records</h2>
-      <table id="records-table" class="min-w-full divide-y divide-gray-200">
+      <!-- Section to show PO Info -->
+      <h2 class="text-2xl font-semibold text-gray-800 mt-10 mb-4">PO Details</h2>
+      <table id="po-table" class="min-w-full divide-y divide-gray-200 hidden">
         <thead class="bg-gray-50">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">ID</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Invoice</th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">PO Number</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Price</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantity</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Due Date</th>
           </tr>
         </thead>
-        <tbody id="records-body" class="bg-white divide-y divide-gray-200"></tbody>
+        <tbody id="po-body" class="bg-white divide-y divide-gray-200"></tbody>
       </table>
+
     </div>
   </div>
 
@@ -87,7 +84,6 @@
     const supabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF0b2ttdHdqdmt3c2JndWRqbmJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk0MjcyOTUsImV4cCI6MjA3NTAwMzI5NX0.VMdeZ1ywlB1TGTapnsH651Nru9dUOBUU2tnQX1zn6GM";
     const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
 
-    // Handle form submission
     document.getElementById('ap-form').addEventListener('submit', async function(event) {
       event.preventDefault();
 
@@ -96,68 +92,90 @@
       const statusMessage = document.getElementById('status-message');
       const submitButton = form.querySelector('button[type="submit"]');
 
-      statusMessage.textContent = 'Submitting...';
+      statusMessage.textContent = 'Validating...';
       statusMessage.className = 'block text-center mt-4 p-3 rounded-lg text-indigo-700 bg-indigo-100';
+      statusMessage.classList.remove('hidden');
       submitButton.disabled = true;
       submitButton.textContent = 'Submitting...';
 
-      const data = {
-        company_name: formData.get('companyName'),
-        invoice_id: formData.get('invoiceId'),
-        po_number: formData.get('poNumber')
-      };
+      const vendorName = formData.get('companyName');
+      const invoiceId = formData.get('invoiceId');
 
-      // Insert into public.ap
-      const { error } = await supabaseClient
-        .from('ap')
-        .insert([data]);
+      // 1. Check vendor
+      const { data: vendorData, error: vendorError } = await supabaseClient
+        .from('vendor_info')
+        .select('*')
+        .eq('vendor_name', vendorName)
+        .single();
 
-      if (error) {
-        console.error(error);
-        statusMessage.textContent = 'Error: ' + error.message;
+      if (!vendorData || vendorError) {
+        statusMessage.textContent = 'Invalid vendor name.';
         statusMessage.className = 'block text-center mt-4 p-3 rounded-lg text-red-700 bg-red-100';
-      } else {
-        statusMessage.textContent = 'Success! Your information has been submitted.';
-        statusMessage.className = 'block text-center mt-4 p-3 rounded-lg text-green-700 bg-green-100';
-        form.reset();
-        loadRecords(); // refresh records
-      }
-
-      setTimeout(() => {
         submitButton.disabled = false;
         submitButton.textContent = 'Submit';
-      }, 3000);
-    });
-
-    // Load and render records
-    async function loadRecords() {
-      const { data, error } = await supabaseClient
-        .from('ap')
-        .select('*')
-        .order('id', { ascending: false });
-
-      const tbody = document.getElementById('records-body');
-      tbody.innerHTML = "";
-
-      if (error) {
-        console.error(error);
         return;
       }
 
-      data.forEach(row => {
+      // 2. Check PO status
+      if (vendorData.po_status !== 'active') {
+        statusMessage.textContent = 'PO is no longer active.';
+        statusMessage.className = 'block text-center mt-4 p-3 rounded-lg text-red-700 bg-red-100';
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit';
+        return;
+      }
+
+      // 3. Fetch PO details
+      const { data: poData, error: poError } = await supabaseClient
+        .from('po_info')
+        .select('*')
+        .eq('po_number', vendorData.po_number);
+
+      if (!poData || poData.length === 0) {
+        statusMessage.textContent = 'No PO details found for this vendor.';
+        statusMessage.className = 'block text-center mt-4 p-3 rounded-lg text-red-700 bg-red-100';
+        submitButton.disabled = false;
+        submitButton.textContent = 'Submit';
+        return;
+      }
+
+      // 4. Display PO info
+      const poTable = document.getElementById('po-table');
+      const poBody = document.getElementById('po-body');
+      poBody.innerHTML = "";
+      poData.forEach(po => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td class="px-6 py-4 text-sm text-gray-900">${row.id}</td>
-          <td class="px-6 py-4 text-sm text-gray-900">${row.company_name ?? ''}</td>
-          <td class="px-6 py-4 text-sm text-gray-900">${row.invoice_id ?? ''}</td>
-          <td class="px-6 py-4 text-sm text-gray-900">${row.po_number ?? ''}</td>
+          <td class="px-6 py-4 text-sm text-gray-900">${po.po_number}</td>
+          <td class="px-6 py-4 text-sm text-gray-900">${po.po_price ?? ''}</td>
+          <td class="px-6 py-4 text-sm text-gray-900">${po.po_qty ?? ''}</td>
+          <td class="px-6 py-4 text-sm text-gray-900">${po.po_due_date ?? ''}</td>
         `;
-        tbody.appendChild(tr);
+        poBody.appendChild(tr);
       });
-    }
+      poTable.classList.remove('hidden');
 
-    // Initial load
-    loadRecords();
+      // 5. Insert into AP
+      const { error: apError } = await supabaseClient
+        .from('ap')
+        .insert([{
+          company_name: vendorName,
+          invoice_id: invoiceId,
+          po_number: vendorData.po_number
+        }]);
+
+      if (apError) {
+        statusMessage.textContent = 'Insert failed: ' + apError.message;
+        statusMessage.className = 'block text-center mt-4 p-3 rounded-lg text-red-700 bg-red-100';
+      } else {
+        statusMessage.textContent = 'Success! Submission saved and PO details shown below.';
+        statusMessage.className = 'block text-center mt-4 p-3 rounded-lg text-green-700 bg-green-100';
+        form.reset();
+      }
+
+      submitButton.disabled = false;
+      submitButton.textContent = 'Submit';
+    });
   </script>
 </body>
 </html>
