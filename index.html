@@ -107,9 +107,9 @@
         po_number: formData.get('poNumber')
       };
 
-      // Insert into Test_git.ap
+      // Insert into public.ap
       const { error } = await supabaseClient
-        .from('Test_git.ap')
+        .from('ap')
         .insert([data]);
 
       if (error) {
@@ -132,7 +132,7 @@
     // Load and render records
     async function loadRecords() {
       const { data, error } = await supabaseClient
-        .from('Test_git.ap')
+        .from('ap')
         .select('*')
         .order('id', { ascending: false });
 
